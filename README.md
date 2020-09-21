@@ -1,4 +1,4 @@
-![alt text](./project/pics/Cover.png)
+![Cover](./project_files/pics/Cover.png)
 # About
 Чат бот для студентов, создан за 2 недели (код + дизайн)
 # Основные функции
