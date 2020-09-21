@@ -82,8 +82,7 @@
 
 # Важное сообщение
 ## Сделать объявление на весь чат<br>
-<br>
-> /важно<br>
+> /важно <br>
 
 # Помощь
 ## Карусель, карусель...<br>
@@ -103,7 +102,7 @@
 Помочь с добавлением препода. Отправит пример запроса.<br>
 > Как добавить? <br>
 
-## Удаеление препода<br>
+## Удаление препода<br>
 Помочь с удалением препода. Отправит пример запроса.<br>
 > Как удалить? <br>
 
@@ -122,7 +121,5 @@
 > Хороший бот <br>
 
 # Credits:
-#### Code<br>
- No one  <br>
 #### Design<br>
 defaulterror (Derek Clark): [Commando Font](https://www.dafont.com/commando.font) <br>Gary D. Jessey: [Art Brush](https://www.dafont.com/artbrush.font) <br>
