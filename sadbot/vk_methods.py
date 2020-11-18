@@ -18,26 +18,17 @@ Wrappers for vk_api library methods
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll
 import config
-import time
+from utils.utils import get_random
 import requests
 
 # Для авторизации
 vk_session = vk_api.VkApi(token=config.token)
 longpoll = VkBotLongPoll(vk_session, config.club_id)
 vk = vk_session.get_api()
+print("vk_methods called!!!")
 
 
-# Random id
-def get_random():
-    """
-    Generate random message_id. Necessary to send message
-
-    :return: random number
-    """
-    return time.time() * 100000
-
-
-def get_user_info(ids):
+def get_user_info(ids: int) -> dict:
     """
     Get main information about user
 
@@ -47,66 +38,70 @@ def get_user_info(ids):
     return vk.users.get(user_ids=ids)[0]
 
 
-def send_message(peer_id,
+def send_message(peer_id: int,
                  message: str = None,
+                 reply_to: int = None,
                  attachments: str = None,
                  keyboard: str = None,
-                 sticker_id: str = None,
+                 sticker_id: int = None,
                  template: str = None):
-    """Send message
+    """Wrapper for message.send
 
     :param peer_id: Chat peer_id (where to send)
     :param message: Message text
+    :param reply_to: Id of the message which we will reply to
     :param attachments: Attachment
     :param keyboard: Keyboard
     :param sticker_id: Sticker_id
     :param template: Carousel
     """
-    print("send message called")
-    
+
     vk.messages.send(
         peer_id=peer_id,
         random_id=get_random(),
         message=message,
+        reply_to=reply_to,
         attachment=attachments,
         keyboard=keyboard,
         template=template,
-        sticker_id=sticker_id)
-    
-    print("sent")
-    return 0
+        sticker_id=sticker_id
+    )
 
-# def send_message_carousel(p: str):
-#     """
-#     Send carousel in chat with link to tutorial in VK articles
-#
-#     :param p: Chat peer_id (where to send)
-#     """
-#     vk.messages.send(
-#         peer_id=p,
-#         random_id=get_random(),
-#         message=r_tutorial,
-#         template=carousel)
+
+def send_message_event_answer(peer_id: int,
+                              user_id: int,
+                              event_id: str,
+                              event_data):
+    """
+    Wrapper for messages.sendMessageEventAnswer
+
+    :param peer_id: Chat peer_id (where to send)
+    :param user_id: id of user who will receive event answer
+    :param event_id: id of the event
+    :param event_data: Data of the event. Action to open link, app or show Snackbar
+    """
+    vk.messages.sendMessageEventAnswer(
+        peer_id=peer_id,
+        user_id=user_id,
+        event_id=event_id,
+        event_data=event_data)
 
 
 def save_photo_to_vk(image_path: str):
     """
-    Send image from device storage (used in full_mode for cool uptime pics)
+    Uploads image from device storage
 
     :param image_path: Path to image
     :return: Returns formatted photo_id (ready to be used in send_message())
     """
-    image = open(image_path, 'rb')  # TODO rb?
-    a = vk.photos.getMessagesUploadServer()
-    b = requests.post(
-        a['upload_url'],
-        files={
-            'photo': image}
+    image = open(image_path, 'rb')
+    req = requests.post(
+        url=vk.photos.getMessagesUploadServer(),
+        files={'photo': image}
     ).json()
     c = vk.photos.saveMessagesPhoto(
-        photo=b['photo'],
-        server=b['server'],
-        hash=b['hash'])[0]
-    d = "photo{}_{}".format(c["owner_id"], c["id"])
-
-    return d
+        photo=req['photo'],
+        server=req['server'],
+        hash=req['hash'])[0]
+    photo_id = "photo{}_{}".format(c["owner_id"], c["id"])
+    return photo_id
