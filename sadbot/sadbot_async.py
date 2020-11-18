@@ -42,11 +42,6 @@ im: ImportantMessagesCollection = ImportantMessagesCollection()
 patcher = vbml.Patcher()
 
 
-# class MyRule:
-#     def __init__(self):
-#
-
-
 @sad_bot.on.message(text=v_start)
 async def start_bot(ans: Message):
     """
