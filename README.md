@@ -101,3 +101,5 @@
 #### Design
 defaulterror (Derek Clark): [Commando Font](https://www.dafont.com/commando.font) <br>
 Gary D. Jessey: [Art Brush](https://www.dafont.com/artbrush.font) <br>
+
+# [Code](https://github.com/sadellie/sadBot)
