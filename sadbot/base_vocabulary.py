@@ -39,7 +39,6 @@ v_trigger = 'sadBot'
 
 # REGISTER
 v_register = '/группа <group_name>'
-r_no_register = 'Вы не состоите ни в одной из групп'  # TODO Unused. Remove?
 r_register_success = "👌 Теперь вы в группе {}\nОтправьте «/помощь», если нужна помощь"
 r_register_fail = '🙅 Данной группы ({}) нет в базе. Спроси меня: «/список»'
 r_register_help = 'Ку 👋🏼 \nДля регистрации отправьте\n«/группа [Название группы]»'
