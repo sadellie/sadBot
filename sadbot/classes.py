@@ -64,7 +64,7 @@ def get_cur_week_text():
     
     :return: Name of the week
     """
-    if get_cur_week(datetime.datetime.today()) == 1:
+    if get_cur_week(datetime.datetime.today()) == '1':
         return "📅 Нижняя неделя"
     else:
         return "📅 Верхняя неделя"
