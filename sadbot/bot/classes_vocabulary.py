@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -21,19 +21,31 @@ v_ for vendetta...
 
 # WEEK
 v_current_week = '<!>/неделя'
+week_a = "📅 Нижняя неделя"
+week_b = "📅 Верхняя неделя"
 
 # CLASSES (FOR A DAY)
 v_classes_today = '<!>/сегодня'
-
 v_classes_tomorrow = '<!>/завтра'
+v_classes_offset = '/пары <offset:int>'
+r_classes_placeholder = 'Нет пары'
+r_classes_template = '📅 Пары {}\n'
+r_classes_offset_error = '❌ Слишком большое число'
 
 # CLASS (ONLY ONE)
 v_class_now = '<!>/сейчас'
-
 v_class_next = '<!>/далее'
+r_class_template = '{e} Пара {n} (в {t}):\n{c}'
+r_class_last = '❌ Сейчас последняя пара, дальше ничего нет'
+r_class_no_more = '❌ Больше пар нет'
 
 # TIMETABLE
 v_class_timetable = '<!>/звонок'
+r_class_timetable_template = '⏰ Звонок через'
+
+# EXAMS
+v_closest_exam = '<!>/экзамен'
+v_closest_exam_with_limit = '<!>/экзамен <limit:int>'
 
 # WEEKDAYS. used for replies
 r_weekdays_template = [

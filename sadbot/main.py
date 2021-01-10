@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -16,23 +16,30 @@
 Main file. Run it and provide some arguments.
 -h for help
 """
-import sys
-import sqlite3
 import argparse
-from os.path import dirname
-from utils import utils
+import configparser
+import sqlite3
+import sys
+from pathlib import Path
+
+from bot.utils import utils
 
 
 def main():
     """
     Main function expects to receive arguments. Otherwise will show help
     """
+    import os
+    cp = configparser.ConfigParser()
+    cp.read(os.path.join(sys.path[0], 'config.ini'), encoding='utf-8')
+    dp = os.path.join(sys.path[0] + cp['DEFAULT']['DatabaseName'])
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--initiate",
                         help="Create empty database",
                         action="store_true")
     parser.add_argument("--generate_template",
-                        help="Generate templeate .xlsx file",
+                        help="Generate template .xlsx file",
                         action="store_true")
     parser.add_argument("--register_new_group",
                         help="Register new group",
@@ -47,18 +54,17 @@ def main():
 
     if args.initiate:
         import os
-        from pathlib import Path
-        import config
-        d_path = Path(dirname(__file__) + config.database_path)
+        import warnings
+        d_path = Path(dp)
         try:
             os.mkdir(d_path.parent)
         except FileExistsError:
-            print(f'{d_path.parent} folder already exists')
-        conn = sqlite3.connect(d_path)
+            warnings.warn('Folder already exists')
+
+        conn = sqlite3.connect(dp)
         utils.create_database(conn)
         print('DATABASE FILE WAS CREATED. YOU CAN NOW OPEN IT IN EDITOR')
         conn.close()
-        sys.exit(0)
 
     elif args.register_new_group:
         print("Use --generate_template_file to create template .xls file where you can enter your schedule")
@@ -66,13 +72,11 @@ def main():
         path = input()
         print("Name of the group")
         group_name = input()
-        conn = sqlite3.connect(dirname(__file__) + '/databases/sadBot2.db')
+        conn = sqlite3.connect(dp)
         result = utils.register_new_group(conn=conn, path=path, group_name=group_name)
         print("Done" if result else "Something went wrong. See output above")
-        sys.exit(0)
 
     elif args.update_group:
-        import config
         print("Use --generate_template_file to create template .xls file where you can enter your schedule")
         print("Path to .xls file with schedule. Leave empty if you don't want to change it:")
         path = input()
@@ -80,21 +84,20 @@ def main():
         group_name = input()
         print("New name of the group. Leave empty if you don't want to change it")
         new_group_name = input()
-        conn = sqlite3.connect(dirname(__file__) + config.database_path)
+        conn = sqlite3.connect(dp)
         result = utils.update_group(
             conn=conn,
             path=path,
             group_name=group_name,
             new_group_name=new_group_name
         )
-        print("Done" if result else "Something went wrong. See output above")
-        sys.exit(0)
+        print("Done" if result else "Something went wrong")
 
     elif args.generate_template:
         print(f"Done. Template file is here:\n{utils.generate_template_file()}")
 
     elif args.start:
-        from sadbot.sadbot_async import start_listening
+        from bot.listener import start_listening
         start_listening()
 
     else:

@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -18,12 +18,13 @@ VK Chat elements (buttons, keyboard, carousel and others)
 import json
 import random
 from typing import List
-from sadbot.classes_vocabulary import (v_classes_today,
-                                       v_classes_tomorrow,
-                                       v_class_now,
-                                       v_class_next,
-                                       v_current_week,
-                                       v_class_timetable)
+from ..classes_vocabulary import (v_classes_today,
+                                  v_classes_tomorrow,
+                                  v_class_now,
+                                  v_class_next,
+                                  v_current_week,
+                                  v_class_timetable,
+                                  v_closest_exam)
 
 link = "https://vk.com/@sadb0t-commands"
 
@@ -50,6 +51,7 @@ bt_cl_now = VkButton(label=v_class_now[3:], payload='now', color='primary')
 bt_cl_next = VkButton(label=v_class_next[3:], payload='next', color='primary')
 bt_week = VkButton(label=v_current_week[3:], payload='week')
 bt_timetable = VkButton(label=v_class_timetable[3:], payload='timetable')
+bt_exam = VkButton(label=v_closest_exam[3:], payload='exam')
 bt_kb = VkButton(label='Кнопки бота')
 bt_plus = [
     '+++',
@@ -178,7 +180,7 @@ crsl = json_cnv(
                     add_button(bt_timetable),
                     add_button(bt_week)
                 ]
-            )
+            ),
         ]
     }
 )
@@ -206,7 +208,8 @@ kbrd = json_cnv(
             # LVL 3
             [
                 add_button(bt_week),
-                add_button(bt_timetable)
+                add_button(bt_timetable),
+                add_button(bt_exam)
             ]
         ]
     }

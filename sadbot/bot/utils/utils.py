@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -15,14 +15,12 @@
 """
 Utilities. Different unsorted functions
 """
+# Some imports are within functions as they are called only once before shutdown
 import datetime
 import time
-# Some imports are within functions as they are called only once before shutdown
-from os.path import dirname
-from pathlib import Path
+import os
+import sys
 from sqlite3 import Connection, connect
-
-import config
 
 
 def get_random():
@@ -51,7 +49,8 @@ def get_uptime(start_time):
     return "{d:02}:{h:02}:{m:02}:{s:02}".format(d=days, h=hours, m=minutes, s=seconds)
 
 
-def custom_factory(cursor, row):
+def custom_factory(cursor,
+                   row):
     """
     Custom factory, makes working with database operations results easier
 
@@ -65,13 +64,13 @@ def custom_factory(cursor, row):
     return cf
 
 
-def connect_to_database():
+def connect_to_database(path: str):
     """
     Connect to database and setup row_factory
 
     :return: Connection to database
     """
-    conn = connect(str(Path(dirname(__file__)).parent) + config.database_path)
+    conn = connect(path)
     conn.row_factory = custom_factory
     return conn
 
@@ -87,22 +86,17 @@ def load_sad_replies(conn: Connection):
 
 
 async def record_stats(db: Connection,
-                       errors: int,
-                       users_count: int,
-                       uptime: str):
+                       uptime):
     """
     Record statistics into database
 
     :param db: Database
-    :param errors: Number of errors
-    :param users_count: Number of users
     :param uptime: Uptime
     """
-    sql = "INSERT INTO stats (statDate, statErrors, statUsersCount, statUptime) VALUES (?, ?, ?, ?)"
-    req = (datetime.datetime.now(), errors, users_count, uptime)
+    sql = "INSERT INTO stats (statDate, statUptime) VALUES (?, ?)"
+    req = (datetime.datetime.now(), uptime)
     db.cursor().execute(sql, req)
     db.commit()
-    return 'gg'
 
 
 def create_database(db: Connection):
@@ -112,22 +106,15 @@ def create_database(db: Connection):
     """
     cur = db.cursor()
     cur.execute(
-        'CREATE TABLE group0 (classId INTEGER PRIMARY KEY AUTOINCREMENT, groupTimeTable TEXT, '
-        'monday1 TEXT, tuesday1 TEXT, wednesday1 TEXT, thursday1 TEXT, friday1 TEXT, saturday1 TEXT, sunday1 TEXT, '
-        'monday2 TEXT, tuesday2 TEXT, wednesday2 TEXT, thursday2 TEXT, friday2 TEXT, saturday2 TEXT, sunday2 TEXT);'
-    )
-    cur.execute(
         'CREATE TABLE groups (groupId INTEGER PRIMARY KEY ON CONFLICT ROLLBACK AUTOINCREMENT NOT NULL, '
         'groupName TEXT NOT NULL);'
     )
     cur.execute(
-        'INSERT INTO groups (groupId, groupName) VALUES (0, "My Group")'
-    )
-    cur.execute(
         'CREATE TABLE sad_replies (replyText TEXT, replyAtt TEXT, replySticker TEXT);'
     )
+
     cur.execute(
-        'CREATE TABLE stats (statDate DATE, statErrors INT, statUsersCount INT, statUptime TIME);'
+        'CREATE TABLE stats (statDate DATE, statUptime TIME);'
     )
     cur.execute(
         'CREATE TABLE teachers (teacherId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, '
@@ -137,6 +124,9 @@ def create_database(db: Connection):
         'CREATE TABLE users (userId TEXT PRIMARY KEY NOT NULL UNIQUE ON CONFLICT REPLACE, '
         'groupPeerId INTEGER REFERENCES groups (groupId) ON DELETE CASCADE ON UPDATE CASCADE, '
         'isAdmin BOOLEAN);'
+    )
+    cur.execute(
+        'CREATE TABLE exams (examDate DATE, examName TEXT, examGroup TEXT, examUser INTEGER);'
     )
 
     db.commit()
@@ -212,6 +202,7 @@ def register_new_group(conn: Connection,
         return False
 
 
+# Not tested properly
 def update_group(conn: Connection,
                  group_name: str,
                  path: str,
@@ -225,26 +216,27 @@ def update_group(conn: Connection,
     :param new_group_name: New name of the group
     :return: True if everything is ok. False is something went wrong
     """
+    r = False
     cur = conn.cursor()
+    cur.execute(
+        "SELECT groupId FROM groups WHERE groupName = ?",
+        (group_name,)
+    )
+    fetch = cur.fetchone()
+    if fetch is None:
+        print(f'No such group {group_name}')
+        r = False
     if len(path) > 0:  # User wants to update schedule
-        if check_sheet(path) == 'OK':
-            cur.execute(
-                "SELECT groupId FROM groups WHERE groupName = ?",
-                (group_name,)
-            )
-            fetch = cur.fetchone()
-            if fetch is None:
-                print(f'No such group {group_name}')
-                return False
+        if check_sheet(path):
             group_id = fetch[0]
             xl_to_database(
                 path=path,
                 group_id=group_id,
                 conn=conn
             )
-            return True
+            r = True
         else:
-            return False
+            r = False
     if len(new_group_name) > 0:  # User wants to update group name
         cur.execute(
             "UPDATE groups SET groupName = ? WHERE groupName = ?",
@@ -256,9 +248,11 @@ def update_group(conn: Connection,
             (new_group_name,)
         )
         if len(cur.fetchall()) > 0:
-            return True
+            r = True
         else:
-            return False
+            r = False
+
+    return r
 
 
 def generate_template_file():

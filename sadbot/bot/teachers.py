@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -18,7 +18,11 @@ Everything related to teachers
 import logging
 from sqlite3 import Cursor, Connection
 
-from sadbot.teachers_vocabulary import r_teacher_delete_help, r_teacher_add_help, r_teacher_find_fail
+from .teachers_vocabulary import (
+    r_teacher_delete_help,
+    r_teacher_delete_success, r_teacher_delete_zero_fail, r_teacher_delete_permission_fail, r_teacher_delete_fail,
+    r_teacher_add_help, r_teacher_add_success,
+    r_teacher_find_fail, r_teacher_find_success, r_teacher_find_symbols)
 
 
 def add_teacher(db: Connection, req: str, user_id: int):
@@ -35,13 +39,13 @@ def add_teacher(db: Connection, req: str, user_id: int):
     # We create list, where 0 is Teacher, and 1 is Class
     try:
         req = req.split("=")
-        req = (req[0], req[1], req[1].lower(), user_id)  # Teacher, Class, Tags(same as class by default)
+        req = (req[0], req[1], req[1].lower(), user_id)  # Teacher, Class, Searchable(we search in this column), User
     except IndexError:
         return r_teacher_add_help
-    sql = '''INSERT INTO teachers (teacherName, teacherClass, teacherClassSearchable, userId) VALUES (?, ?, ?, ?)'''
+    sql = "INSERT INTO teachers (teacherName, teacherClass, teacherClassSearchable, userId) VALUES (?, ?, ?, ?)"
     db.cursor().execute(sql, req)
     db.commit()
-    return req[0] + " преподаёт " + req[1] + ", понял"
+    return r_teacher_add_success.format(req[0], req[1])
 
 
 def delete_teacher(db: Connection, req: str, user_id: int):
@@ -66,7 +70,7 @@ def delete_teacher(db: Connection, req: str, user_id: int):
     find = cur.execute(sql_to_find, req_to_find).fetchall()
     if len(find) > 0:
         # Now we need to work only with records only by this user
-        users = []  # List of user who has added records with requested parametrs
+        users = []  # List of user who has added records with requested parameters
         for i in find:
             users.append(int(i['userId']))
         if user_id in users:  # User is in list
@@ -74,15 +78,15 @@ def delete_teacher(db: Connection, req: str, user_id: int):
             sql = "DELETE FROM teachers WHERE teacherClass == ? AND teacherName == ? AND userId == ?"
             if cur.execute(sql, req_to_delete).rowcount > 0:
                 db.commit()
-                return "Готово, теперь его никто не найдёт..."
+                return r_teacher_delete_success
             else:
                 logging.error('Deleted 0 records. Request: %s', req)
-                return "Удалено 0 записей [что-то сломалось]"
+                return r_teacher_delete_zero_fail
         else:  # User wants to delete existing other users' record
-            return "Не ты добавлял, сорян"
+            return r_teacher_delete_permission_fail
     else:
         # No records of class with this name at all
-        return "Не нашёл такого [ошибки в запросе?]"
+        return r_teacher_delete_fail
 
 
 def find_teacher(cur: Cursor, req: str):
@@ -94,17 +98,16 @@ def find_teacher(cur: Cursor, req: str):
     :return: Search result as string
     """
     if len(req) < 3:
-        return "Маловато символов"
-
+        return r_teacher_find_symbols
     req_f = f"%{req.lower()}%"
     qwe = (req_f,)
-    sql = "SELECT * FROM teachers WHERE teacherClassSearchable LIKE ?"
+    sql = "SELECT * FROM teachers WHERE teacherClassSearchable LIKE ? LIMIT 5"
     cur.execute(sql, qwe)
     res = cur.fetchall()
     out = ""
-    for counter, i in enumerate(res[:5]):  # We take only first 5 results
-        out += f"{counter + 1}. {i['teacherName']}\n({i['teacherClass']})\n"
+    for c, i in enumerate(res):
+        print(i)
+        out += f"{c + 1}. {i['teacherName']}\n({i['teacherClass']})\n"
     if not out:
         return r_teacher_find_fail.format(req)
-    return "🔍 Результаты поиска: " + out
-
+    return r_teacher_find_success.format(out)

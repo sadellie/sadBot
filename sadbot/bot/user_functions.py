@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -19,18 +19,20 @@ from typing import Union
 from vkbottle import Bot
 from vkbottle.bot import rules, Message
 
-from sadbot.base_vocabulary import r_important_ok, r_important_not_ok, r_important_template, r_register_fail, \
+from .base_vocabulary import r_important_ok, r_important_not_ok, r_important_template, r_register_fail, \
     r_register_success
-from utils.element_builders import kb_imp_builder
-from utils.utils import get_random
+from .utils.element_builders import kb_imp_builder
+from .utils.utils import get_random
 
 
 class UserClass:
     """
-    User class which represents one user(yes floor is made of floor)
+    User class which represents one user in database
     """
 
-    def __init__(self, user_id: int, group_peer_id: int, is_admin: bool):
+    def __init__(self, user_id: int,
+                 group_peer_id: int,
+                 is_admin: bool):
         self.user_id = user_id
         self.group_peer_id = group_peer_id
         self.is_admin = is_admin
@@ -47,7 +49,8 @@ class GroupClass:
         self.group_name = group_name
 
 
-def get_user(cur: Cursor, user_id: int = 0):
+def get_user(cur: Cursor,
+             user_id: int = 0):
     """
     Get user from database
 
@@ -59,7 +62,9 @@ def get_user(cur: Cursor, user_id: int = 0):
     res = cur.fetchall()
     if len(res) > 0:
         res = res[0]
-        return UserClass(res['userId'], res['groupPeerId'], res['isAdmin'])
+        return UserClass(res['userId'],
+                         res['groupPeerId'],
+                         True if res['isAdmin'] == 1 else False)
     else:
         return None
 
@@ -83,12 +88,13 @@ def register_user(db: Connection,
         values = (user_id, find_res.group_id)
         cur.execute(sql, values)
         db.commit()
-        return r_register_success
+        return True
     else:
-        return r_register_fail.format(group_name)
+        return False
 
 
-def find_group_by_name(cur: Cursor, group_name: str):
+def find_group_by_name(cur: Cursor,
+                       group_name: str):
     """
     Find group in database by given name
 
@@ -102,7 +108,8 @@ def find_group_by_name(cur: Cursor, group_name: str):
         return GroupClass(res['groupId'], res['groupName'])
 
 
-def get_all_groups(cursor: Cursor, names: bool = False):
+def get_all_groups(cursor: Cursor,
+                   names: bool = False):
     """
     Get all groups from database
 
@@ -234,4 +241,25 @@ class OnlyRegistered(rules.ABCMessageRule):
         """
         if get_user(self.conn.cursor(), message.peer_id) is not None:
             return True
+        return False
+
+
+class OnlyAdmin(rules.ABCMessageRule):
+    """
+    Rule which makes some features available only for registered in local database users
+    """
+
+    def __init__(self, conn: Connection):
+        self.conn = conn
+
+    async def check(self, message: Message):
+        """
+        Checks if user is in database
+
+        :param message: Incoming Message object
+        :return: Returns True if check is passed. False if not.
+        """
+        u = get_user(self.conn.cursor(), message.peer_id)
+        if u is not None:
+            return u.is_admin
         return False

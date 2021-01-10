@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -15,18 +15,19 @@
 """
 Unittest here. Uses temporary database.
 """
-import unittest
-import sqlite3
 import shutil
+import sqlite3
 import tempfile
+import unittest
 
-from sadbot.classes import get_class, time_to_next
+from bot.classes import get_class, time_to_next
+from bot.utils.utils import create_database
 
 
 def create_empty_database(path):
     """
     Creates empty database with all tables.
-    Also creates table for group0 with dummmy data and registers it in groups table
+    Also creates table for group0 with dummy data and registers it in groups table
 
     :param path: Path where database will be saved
     :return: Returns sqlite3.Connection
@@ -47,26 +48,21 @@ def create_empty_database(path):
 
     conn = sqlite3.connect(path + '/test.db')
     conn.row_factory = custom_factory
+    create_database(conn)
     cur = conn.cursor()
+
     cur.execute(
-        "CREATE TABLE group0 (classId INTEGER PRIMARY KEY AUTOINCREMENT, groupTimeTable TEXT,"
-        "monday1 TEXT, tuesday1 TEXT, wednesday1 TEXT, thursday1 TEXT, friday1 TEXT, saturday1 TEXT, sunday1 TEXT,"
-        "monday2 TEXT, tuesday2 TEXT, wednesday2 TEXT, thursday2 TEXT, friday2 TEXT, saturday2 TEXT, sunday2 TEXT);")
+        'CREATE TABLE group0 (classId INTEGER PRIMARY KEY AUTOINCREMENT, groupTimeTable TEXT, '
+        'monday1 TEXT, tuesday1 TEXT, wednesday1 TEXT, thursday1 TEXT, friday1 TEXT, saturday1 TEXT, sunday1 TEXT, '
+        'monday2 TEXT, tuesday2 TEXT, wednesday2 TEXT, thursday2 TEXT, friday2 TEXT, saturday2 TEXT, sunday2 TEXT);'
+    )
     cur.execute(
-        "CREATE TABLE groups (groupId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
-        "groupName TEXT NOT NULL, "
-        "groupTiming TEXT NOT NULL);")
-    cur.execute(
-        "INSERT INTO groups (groupId, groupName, groupTiming) "
-        "VALUES (?, ?, ?);",
-        (0, 'testGroup', '9:00;10:20;'
-                         '10:30;11:50;'
-                         '12:00;13:20;'
-                         '13:30;14:50;'
-                         '15:00;16:20;'
-                         '16:30;17:50')  # One class is 1 hour 20 minutes + 10 minutes break between classes
+        "INSERT INTO groups (groupId, groupName) "
+        "VALUES (?, ?);",
+        (0, 'testGroup')
     )
 
+    # One class is 1 hour 20 minutes + 10 minutes break between classes
     timings = ['9:00-10:20', '10:30-11:50', '12:00-13:20', '13:30-14:50', '15:00-16:20', '16:30-17:50']
 
     for t in range(1, 7):
@@ -85,6 +81,7 @@ def create_empty_database(path):
         )
 
     conn.commit()
+    print('Created temporary database')
     return conn
 
 
@@ -103,24 +100,30 @@ def permission_error_fix(path):
 
 
 class TodayClass(unittest.TestCase):
-    def setUp(self):
+
+    conn: sqlite3.Connection
+    test_dir: str
+
+    @classmethod
+    def setUpClass(cls):
         """
         Creates temporary directory and creates database with dummy data in it.
         Also changes current date, so results will not be affected by date.
         """
-        self.test_dir = tempfile.mkdtemp()
-        print(self.test_dir)
-        self.conn = create_empty_database(self.test_dir)
-        self.cur = self.conn.cursor()
-        self.custom_day = [15, 10, 2020]
+        cls.test_dir = tempfile.mkdtemp()
+        print(cls.test_dir)
+        cls.conn = create_empty_database(cls.test_dir)
+        cls.cur = cls.conn.cursor()
+        cls.custom_day = [15, 10, 2020]
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         """
-        Deletes temporary directory with databse
+        Deletes temporary directory with database
         """
         print('Deleting temporary directory...')
-        self.conn.close()
-        shutil.rmtree(self.test_dir, onerror=permission_error_fix(self.test_dir))
+        cls.conn.close()
+        shutil.rmtree(cls.test_dir, onerror=permission_error_fix(cls.test_dir))
         print("Temporary directory was deleted")
 
     def test_get_time_to_next_before(self):
@@ -130,9 +133,9 @@ class TodayClass(unittest.TestCase):
         result = time_to_next(
             cur=self.cur,
             g=0,
-            custom_time=[8, 55]
+            custom_time=[7, 55]
         )
-        self.assertEqual(result, 'Звонок через 5 мин.')
+        self.assertEqual(result, '⏰ Звонок через 1 ч. 5 мин.')
 
     def test_get_time_to_next_during(self):
         """
@@ -143,7 +146,7 @@ class TodayClass(unittest.TestCase):
             g=0,
             custom_time=[10, 00]
         )
-        self.assertEqual(result, 'Звонок через 20 мин.')
+        self.assertEqual(result, '⏰ Звонок через 20 мин.')
 
     def test_get_time_to_next_between(self):
         """
@@ -154,7 +157,7 @@ class TodayClass(unittest.TestCase):
             g=0,
             custom_time=[10, 21]
         )
-        self.assertEqual(result, 'Звонок через 9 мин.')
+        self.assertEqual(result, '⏰ Звонок через 9 мин.')
 
     def test_get_time_to_next_during_last(self):
         """
@@ -165,7 +168,7 @@ class TodayClass(unittest.TestCase):
             g=0,
             custom_time=[17, 49]
         )
-        self.assertEqual(result, 'Звонок через 1 мин.')
+        self.assertEqual(result, '⏰ Звонок через 1 мин.')
 
     def test_get_time_to_next_after_last(self):
         """
@@ -188,7 +191,7 @@ class TodayClass(unittest.TestCase):
             custom_time=[8, 59],
             custom_day=self.custom_day
         )
-        self.assertEqual(result[2:], 'Пара 1: \n21')
+        self.assertEqual(result[2:], 'Пара 1 (в 9:00):\n21')
 
     def test_get_first_class(self):
         """
@@ -200,7 +203,7 @@ class TodayClass(unittest.TestCase):
             custom_time=[9, 15],
             custom_day=self.custom_day
         )
-        self.assertEqual(result[2:], 'Пара 1: \n21')
+        self.assertEqual(result[2:], 'Пара 1 (в 9:00):\n21')
 
     def test_get_class_after_second_class_during_break(self):
         """
@@ -212,7 +215,7 @@ class TodayClass(unittest.TestCase):
             custom_time=[11, 51],
             custom_day=self.custom_day
         )
-        self.assertEqual(result[2:], 'Пара 3: \n41')
+        self.assertEqual(result[2:], 'Пара 3 (в 12:00):\n41')
 
     def test_get_third_class(self):
         """
@@ -224,7 +227,7 @@ class TodayClass(unittest.TestCase):
             custom_time=[13, 00],
             custom_day=self.custom_day
         )
-        self.assertEqual(result[2:], 'Пара 3: \n41')
+        self.assertEqual(result[2:], 'Пара 3 (в 12:00):\n41')
 
     def test_get_last_class(self):
         """
@@ -236,30 +239,36 @@ class TodayClass(unittest.TestCase):
             custom_time=[17, 40],
             custom_day=self.custom_day
         )
-        self.assertEqual(result[2:], 'Пара 6: \n71')
+        self.assertEqual(result[2:], 'Пара 6 (в 16:30):\n71')
 
 
 class NextClass(unittest.TestCase):
-    def setUp(self):
+
+    conn: sqlite3.Connection
+    test_dir: str
+
+    @classmethod
+    def setUpClass(cls):
         """
         Creates temporary directory and creates database with dummy data in it.
         Also changes current date, so results will not be affected by date.
         """
         # We create temporary database and test fill it with dummy data
-        self.test_dir = tempfile.mkdtemp()
-        print(self.test_dir)
-        self.conn = create_empty_database(self.test_dir)
-        self.cur = self.conn.cursor()
+        cls.test_dir = tempfile.mkdtemp()
+        print(cls.test_dir)
+        cls.conn = create_empty_database(cls.test_dir)
+        cls.cur = cls.conn.cursor()
 
-        self.custom_day = [15, 10, 2020]
+        cls.custom_day = [15, 10, 2020]
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         """
-        Deletes temporary directory with databse
+        Deletes temporary directory with database
         """
         print('Deleting temporary directory...')
-        self.conn.close()
-        shutil.rmtree(self.test_dir, onerror=permission_error_fix(self.test_dir))
+        cls.conn.close()
+        shutil.rmtree(cls.test_dir, onerror=permission_error_fix(cls.test_dir))
 
     def test_get_after_classes(self):
         """
@@ -286,7 +295,7 @@ class NextClass(unittest.TestCase):
         )
         # Everything before first class start time is first class.
         # If it's 8:59, but 1st class starts at 9:00 it still counts as 1st class
-        self.assertEqual(result[2:], 'Пара 2: \n31')
+        self.assertEqual(result[2:], 'Пара 2 (в 10:30):\n31')
 
     def test_get_next_class_after_first(self):
         """
@@ -299,7 +308,7 @@ class NextClass(unittest.TestCase):
             custom_time=[10, 21],  # Time is 10:21, 1st class has just ended
             custom_day=self.custom_day
         )
-        self.assertEqual(result[2:], 'Пара 3: \n41')
+        self.assertEqual(result[2:], 'Пара 3 (в 12:00):\n41')
 
     def test_get_next_class_last(self):
         """

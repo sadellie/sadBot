@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -16,14 +16,18 @@
 This the list of trigger-words for everything related to 'teachers search' feature
 """
 v_teacher_find = '/препод <find_req>'
-r_teacher_find_help = '💁🏼‍♂️ Пример:\n/препод Предмет'
+r_teacher_find_success = '🔍 Результаты поиска:\n{}'
 r_teacher_find_fail = '🤷🏼‍♂️ Я не знаю кто преподаёт {}.' \
                       '\n\nКоманда для добавления: «/добавь Имя=Предмет»'
+r_teacher_find_symbols = 'Маловато символов'
 
 v_teacher_add = '/добавь <add_req>'
-v_teacher_add_help = {'как добавить'}
 r_teacher_add_help = '💁🏼‍♂️ Пример:\n/добавь Имя=Предмет'
+r_teacher_add_success = '{} преподаёт {}, понял'
 
 v_teacher_delete = '/удали <del_req>'
-v_teacher_delete_help = {'как удалить'}
 r_teacher_delete_help = '💁🏼‍♂️ Пример:\n/удали Имя=Предмет'
+r_teacher_delete_success = 'Готово, теперь его никто не найдёт...'
+r_teacher_delete_fail = 'Не нашёл такого [ошибки в запросе?]'
+r_teacher_delete_zero_fail = 'Удалено 0 записей [что-то сломалось]'
+r_teacher_delete_permission_fail = 'Не ты добавлял, сорян'

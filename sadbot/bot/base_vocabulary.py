@@ -1,4 +1,4 @@
-#    Copyright 2020 Elshan Agaev
+#    Copyright 2021 Elshan Agaev
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 """
 Bot's vocabulary
-This the list of trigger-words (in russian language, but may be easily modified to support multiple languages)
+This the list of trigger-words and responses (in russian language, but may be easily modified to support multiple languages)
 r_ for response
 v_ for vendetta...
 """
@@ -33,9 +33,9 @@ r_keyboard_help = 'Для вкл/выкл клавиатуры отправьт�
 
 v_tutorial = '<!>/помощь'
 r_tutorial = 'Основные возможности бота. Вся документация доступна по ссылке: https://vk.com/@sadb0t-commands'
-v_alive = '<!>/ping'
-v_kill = '<!>/kill'
-v_trigger = 'sadBot'
+
+v_alive = '/ping'
+v_trigger = ['/sadbot', 'sadbot']
 
 # REGISTER
 v_register = '/группа <group_name>'
@@ -53,3 +53,18 @@ r_important_dead_payload = '⭕ Ничем не могу помочь'
 r_important_not_last = '❗ Ставить плюсы можно только к последнему объявлению'
 r_important_ok = 'Принято 👍'
 r_important_not_ok = 'Одного раза достаточно, {} 😡'
+
+months = [
+    'Января',
+    'Февраля',
+    'Марта',
+    'Апреля',
+    'Мая',
+    'Июня',
+    'Июля',
+    'Августа',
+    'Сентября',
+    'Октября',
+    'Ноября',
+    'Декабря'
+]
