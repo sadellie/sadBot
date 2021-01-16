@@ -14,11 +14,10 @@
 
 """
 Bot's vocabulary
-This the list of trigger-words and responses (in russian language, but may be easily modified to support multiple languages)
+This the list of trigger-words (in russian language, but may be easily modified to support multiple languages)
 r_ for response
 v_ for vendetta...
 """
-
 
 # BOT THINGS (start/help/keyboard etc.)
 v_start = [
@@ -27,15 +26,20 @@ v_start = [
 ]
 
 v_keyboard_toggle = '/кнопки <toggle>'
-
-r_keyboard = 'Готово'
+r_keyboard_success = 'Готово'
 r_keyboard_help = 'Для вкл/выкл клавиатуры отправьте «/кнопки вкл» или «/кнопки выкл»'
 
 v_tutorial = '<!>/помощь'
 r_tutorial = 'Основные возможности бота. Вся документация доступна по ссылке: https://vk.com/@sadb0t-commands'
 
+v_commands = '<!>/команды'
+r_commands = 'Команды:'
+
 v_alive = '/ping'
 v_trigger = ['/sadbot', 'sadbot']
+v_kill = '/kill'
+
+v_run_script = '/run <path>'
 
 # REGISTER
 v_register = '/группа <group_name>'
@@ -53,18 +57,3 @@ r_important_dead_payload = '⭕ Ничем не могу помочь'
 r_important_not_last = '❗ Ставить плюсы можно только к последнему объявлению'
 r_important_ok = 'Принято 👍'
 r_important_not_ok = 'Одного раза достаточно, {} 😡'
-
-months = [
-    'Января',
-    'Февраля',
-    'Марта',
-    'Апреля',
-    'Мая',
-    'Июня',
-    'Июля',
-    'Августа',
-    'Сентября',
-    'Октября',
-    'Ноября',
-    'Декабря'
-]

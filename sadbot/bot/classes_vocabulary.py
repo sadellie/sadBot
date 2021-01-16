@@ -43,10 +43,6 @@ r_class_no_more = '❌ Больше пар нет'
 v_class_timetable = '<!>/звонок'
 r_class_timetable_template = '⏰ Звонок через'
 
-# EXAMS
-v_closest_exam = '<!>/экзамен'
-v_closest_exam_with_limit = '<!>/экзамен <limit:int>'
-
 # WEEKDAYS. used for replies
 r_weekdays_template = [
     'в понедельник',

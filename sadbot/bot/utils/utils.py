@@ -18,8 +18,6 @@ Utilities. Different unsorted functions
 # Some imports are within functions as they are called only once before shutdown
 import datetime
 import time
-import os
-import sys
 from sqlite3 import Connection, connect
 
 
@@ -86,16 +84,17 @@ def load_sad_replies(conn: Connection):
 
 
 async def record_stats(db: Connection,
-                       uptime):
+                       uptime: datetime.timedelta):
     """
     Record statistics into database
 
-    :param db: Database
+    :param db: Database connection
     :param uptime: Uptime
     """
     sql = "INSERT INTO stats (statDate, statUptime) VALUES (?, ?)"
-    req = (datetime.datetime.now(), uptime)
+    req = (datetime.datetime.now(), uptime.seconds)
     db.cursor().execute(sql, req)
+    print(datetime.datetime.timetuple(datetime.datetime.now()))
     db.commit()
 
 
@@ -105,28 +104,40 @@ def create_database(db: Connection):
     Once it's created you should open it in editor and insert your data or use xls file
     """
     cur = db.cursor()
+
+    # Groups table
     cur.execute(
         'CREATE TABLE groups (groupId INTEGER PRIMARY KEY ON CONFLICT ROLLBACK AUTOINCREMENT NOT NULL, '
         'groupName TEXT NOT NULL);'
     )
+
+    # Random replies table
     cur.execute(
         'CREATE TABLE sad_replies (replyText TEXT, replyAtt TEXT, replySticker TEXT);'
     )
 
+    # Stats table
     cur.execute(
         'CREATE TABLE stats (statDate DATE, statUptime TIME);'
     )
+
+    # Teachers table
     cur.execute(
         'CREATE TABLE teachers (teacherId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, '
         'teacherName TEXT, teacherClassSearchable TEXT, teacherClass TEXT, userId TEXT);'
     )
+
+    # Users table
     cur.execute(
         'CREATE TABLE users (userId TEXT PRIMARY KEY NOT NULL UNIQUE ON CONFLICT REPLACE, '
         'groupPeerId INTEGER REFERENCES groups (groupId) ON DELETE CASCADE ON UPDATE CASCADE, '
-        'isAdmin BOOLEAN);'
+        'isAdmin BOOLEAN, isBanned BOOLEAN);'
     )
+
+    # Exams table
     cur.execute(
-        'CREATE TABLE exams (examDate DATE, examName TEXT, examGroup TEXT, examUser INTEGER);'
+        'CREATE TABLE exams (examId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, examDate DATE, '
+        'examName TEXT, examGroup TEXT, examUser INTEGER);'
     )
 
     db.commit()

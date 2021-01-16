@@ -19,10 +19,9 @@ from typing import Union
 from vkbottle import Bot
 from vkbottle.bot import rules, Message
 
-from .base_vocabulary import r_important_ok, r_important_not_ok, r_important_template, r_register_fail, \
-    r_register_success
-from .utils.element_builders import kb_imp_builder
-from .utils.utils import get_random
+from bot.base_vocabulary import r_important_ok, r_important_not_ok, r_important_template
+from bot.utils.element_builders import kb_imp_builder
+from bot.utils.utils import get_random
 
 
 class UserClass:
@@ -32,16 +31,19 @@ class UserClass:
 
     def __init__(self, user_id: int,
                  group_peer_id: int,
-                 is_admin: bool):
+                 is_admin: bool,
+                 is_banned: bool):
         self.user_id = user_id
         self.group_peer_id = group_peer_id
         self.is_admin = is_admin
+        self.is_banned = is_banned
 
 
 class GroupClass:
     """
     Class which represents one group
     """
+
     def __init__(self,
                  group_id: str,
                  group_name: str):
@@ -49,8 +51,8 @@ class GroupClass:
         self.group_name = group_name
 
 
-def get_user(cur: Cursor,
-             user_id: int = 0):
+async def get_user(cur: Cursor,
+                   user_id: int = 0):
     """
     Get user from database
 
@@ -64,7 +66,8 @@ def get_user(cur: Cursor,
         res = res[0]
         return UserClass(res['userId'],
                          res['groupPeerId'],
-                         True if res['isAdmin'] == 1 else False)
+                         True if res['isAdmin'] == 1 else False,
+                         True if res['isBanned'] == 1 else False,)
     else:
         return None
 
@@ -183,21 +186,21 @@ class ImportantMessagesCollection:
         return message, kb_imp_builder(r)
 
     async def imp(self,
-                  bot: Union[Bot],
+                  api,
                   user_id: int,
                   peer_id: int,
                   message_id: int) -> str:
         """
         IMPORTANT function. Reacts to button clicks.
 
-        :param bot: Bot (from vkbottle)
+        :param api: VK Api (from vkbottle)
         :param user_id: User_id (who clicked)
         :param peer_id: Chat peer_id (where it was clicked)
         :param message_id: Message_id (which message was clicked and will be edited)
         :return: Result
         """
 
-        u_info = await bot.api.users.get(user_ids=[user_id])
+        u_info = await api.users.get(user_ids=[str(user_id)])
         f_name = u_info[0].first_name
         l_name = u_info[0].last_name
         m = self.all[peer_id]
@@ -217,11 +220,30 @@ class ImportantMessagesCollection:
                 }
             )
             # Finally we can edit the message
-            await bot.api.messages.edit(peer_id=peer_id,
-                                        message=message_local,
-                                        conversation_message_id=message_id,
-                                        keyboard=kb_imp_builder(m.payload))
+            await api.messages.edit(peer_id=peer_id,
+                                    message=message_local,
+                                    conversation_message_id=message_id,
+                                    keyboard=kb_imp_builder(m.payload))
             return r_important_ok
+
+
+class BannedRule(rules.ABCMessageRule):
+    """Exclude banned users"""
+
+    def __init__(self, conn: Connection):
+        self.conn = conn
+
+    async def check(self, message: Message):
+        """Check if user is banned
+
+        :param message: Message object
+        :return: False if banned
+        """
+        u = await get_user(self.conn.cursor(), message.peer_id)
+        if u is None:
+            return True
+        else:
+            return not u.is_banned
 
 
 class OnlyRegistered(rules.ABCMessageRule):
@@ -239,14 +261,15 @@ class OnlyRegistered(rules.ABCMessageRule):
         :param message: Incoming Message object
         :return: Returns True if check is passed. False if not.
         """
-        if get_user(self.conn.cursor(), message.peer_id) is not None:
-            return True
+        u = await get_user(self.conn.cursor(), message.peer_id)
+        if u is not None:
+            return not u.is_banned
         return False
 
 
 class OnlyAdmin(rules.ABCMessageRule):
     """
-    Rule which makes some features available only for registered in local database users
+    Rule which makes some features available only for admins
     """
 
     def __init__(self, conn: Connection):
@@ -254,12 +277,12 @@ class OnlyAdmin(rules.ABCMessageRule):
 
     async def check(self, message: Message):
         """
-        Checks if user is in database
+        Checks if user is an admin
 
         :param message: Incoming Message object
         :return: Returns True if check is passed. False if not.
         """
-        u = get_user(self.conn.cursor(), message.peer_id)
+        u = await get_user(self.conn.cursor(), message.peer_id)
         if u is not None:
             return u.is_admin
         return False

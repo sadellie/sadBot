@@ -18,13 +18,8 @@ VK Chat elements (buttons, keyboard, carousel and others)
 import json
 import random
 from typing import List
-from ..classes_vocabulary import (v_classes_today,
-                                  v_classes_tomorrow,
-                                  v_class_now,
-                                  v_class_next,
-                                  v_current_week,
-                                  v_class_timetable,
-                                  v_closest_exam)
+from bot.classes_vocabulary import *
+from bot.exams_vocabulary import v_closest_exam
 
 link = "https://vk.com/@sadb0t-commands"
 

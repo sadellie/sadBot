@@ -22,6 +22,7 @@ import random
 import sys
 import configparser
 import asyncio
+import subprocess
 
 from vkbottle import GroupEventType, GroupTypes
 
@@ -30,6 +31,7 @@ from bot import classes, teachers, exams
 from bot.base_vocabulary import *
 from bot.classes_vocabulary import *
 from bot.teachers_vocabulary import *
+from bot.exams_vocabulary import *
 from bot.user_functions import *
 from bot.utils.utils import get_uptime, connect_to_database, load_sad_replies, record_stats
 
@@ -43,9 +45,21 @@ sad_bot.labeler.vbml_ignore_case = True  # bot will ignore case in messages
 conn = connect_to_database(sys.path[0] + cp['DEFAULT']['DatabaseName'])  # Establishing connection to database
 sad_replies = load_sad_replies(conn)  # Caching random replies so we don't need to load them everytime
 im: ImportantMessagesCollection = ImportantMessagesCollection()  # Object to store 'important messages'
-loop: asyncio.AbstractEventLoop  # Main loop
+loop: asyncio.AbstractEventLoop = sad_bot.loop  # Main loop
 
 logging.config.fileConfig(cp, disable_existing_loggers=False)  # setting up logging
+
+all_commands = '\n'.join(i.replace('<!>', '')
+                         for i in [*v_start, v_groups_list, v_register, v_keyboard_toggle,
+                                   v_tutorial, v_commands, v_alive, *v_trigger,
+                                   v_classes_today, v_classes_tomorrow,
+                                   v_class_now, v_class_next,
+                                   v_current_week, v_class_timetable,
+                                   *v_teacher_add, *v_teacher_delete, *v_teacher_find,
+                                   *v_exam_add, *v_exam_delete, v_closest_exam, v_closest_exam_with_limit,
+                                   v_important,
+                                   v_kill, v_run_script]
+                         )
 
 
 @sad_bot.on.message(lev=v_start)
@@ -66,13 +80,12 @@ async def send_list_of_groups(ans: Message):
     await ans.answer(get_all_groups_formatted(conn))
 
 
-@sad_bot.on.message(text=v_register)
+@sad_bot.on.message(BannedRule(conn), text=v_register)
 async def send_register_result(ans: Message, group_name):
     """
     Register in database
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}] tried to register in {group_name}')
-    # FIX Send keyboard only when registered successfully
     r = [r_register_success, eb.kbrd] if register_user(conn, ans.peer_id, group_name) else [r_register_fail, eb.no_kbrd]
     await ans.answer(r[0].format(group_name), keyboard=r[1])
 
@@ -84,9 +97,9 @@ async def send_keyboard(ans: Message, toggle):
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}] toggled "{toggle}"')
     if toggle == 'выкл':
-        await ans.answer(r_keyboard, keyboard=eb.no_kbrd)
+        await ans.answer(r_keyboard_success, keyboard=eb.no_kbrd)
     elif toggle == 'вкл':
-        await ans.answer(r_keyboard, keyboard=eb.kbrd)
+        await ans.answer(r_keyboard_success, keyboard=eb.kbrd)
     else:
         await ans.answer(r_keyboard_help)
 
@@ -98,6 +111,15 @@ async def send_tutorial(ans: Message):
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
     await ans.answer(r_tutorial, template=eb.crsl)
+
+
+@sad_bot.on.message(text=v_commands)
+async def send_commands(ans: Message):
+    """
+    Send all available commands
+    """
+    logging.info(f'{ans.from_id}[{ans.peer_id}]')
+    await ans.answer(all_commands)
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_alive)
@@ -131,7 +153,7 @@ async def send_classes_today(ans: Message):
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
     await ans.answer(
-        classes.get_classes(conn.cursor(), get_user(conn.cursor(), ans.peer_id).group_peer_id, as_list=False))
+        classes.get_classes(conn.cursor(), (await get_user(conn.cursor(), ans.peer_id)).group_peer_id, as_list=False))
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_classes_tomorrow)
@@ -141,7 +163,8 @@ async def send_classes_tomorrow(ans: Message):
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
     await ans.answer(
-        classes.get_classes(conn.cursor(), get_user(conn.cursor(), ans.peer_id).group_peer_id, 1, as_list=False))
+        classes.get_classes(conn.cursor(), (await get_user(conn.cursor(), ans.peer_id)).group_peer_id, 1,
+                            as_list=False))
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_classes_offset)
@@ -152,7 +175,7 @@ async def send_classes_tomorrow(ans: Message, offset: int):
     logging.info(f'{ans.from_id}[{ans.peer_id}] OFFSET {offset}')
     await ans.answer(
         classes.get_classes(conn.cursor(),
-                            get_user(conn.cursor(), ans.peer_id).group_peer_id, offset, as_list=False))
+                            (await get_user(conn.cursor(), ans.peer_id)).group_peer_id, offset, as_list=False))
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_class_now)
@@ -161,7 +184,7 @@ async def send_class_now(ans: Message):
     Send current class
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
-    await ans.answer(classes.get_class(conn.cursor(), get_user(conn.cursor(), ans.peer_id).group_peer_id))
+    await ans.answer(classes.get_class(conn.cursor(), (await get_user(conn.cursor(), ans.peer_id)).group_peer_id))
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_class_next)
@@ -170,7 +193,7 @@ async def send_class_next(ans: Message):
     Send next class
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
-    await ans.answer(classes.get_class(conn.cursor(), get_user(conn.cursor(), ans.peer_id).group_peer_id, 1))
+    await ans.answer(classes.get_class(conn.cursor(), (await get_user(conn.cursor(), ans.peer_id)).group_peer_id, 1))
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_current_week)
@@ -188,7 +211,7 @@ async def send_timing(ans: Message):
     Send timing
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
-    await ans.answer(classes.time_to_next(conn.cursor(), get_user(conn.cursor(), ans.peer_id).group_peer_id))
+    await ans.answer(classes.time_to_next(conn.cursor(), (await get_user(conn.cursor(), ans.peer_id)).group_peer_id))
 
 
 @sad_bot.on.message(OnlyRegistered(conn), text=v_teacher_add)
@@ -224,8 +247,8 @@ async def send_exam_closest(ans: Message):
     Closest exam
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
-    await ans.answer(exams.get_next_exam(
-        group=get_user(conn.cursor(), ans.peer_id).group_peer_id,
+    await ans.answer(await exams.get_next_exam(
+        group=(await get_user(conn.cursor(), ans.peer_id)).group_peer_id,
         limit=1,
         cur=conn.cursor()
     ))
@@ -237,11 +260,29 @@ async def send_exam_closest_with_limit(ans: Message, limit):
     Closest exam
     """
     logging.info(f'{ans.from_id}[{ans.peer_id}] {limit}')
-    await ans.answer(exams.get_next_exam(
-        group=get_user(conn.cursor(), ans.peer_id).group_peer_id,
+    await ans.answer(await exams.get_next_exam(
+        group=(await get_user(conn.cursor(), ans.peer_id)).group_peer_id,
         limit=limit,
         cur=conn.cursor()
     ))
+
+
+@sad_bot.on.message(OnlyRegistered(conn), text=v_exam_add)
+async def send_exam_add(ans: Message, add_req):
+    """
+    Add exam
+    """
+    logging.info(f'{ans.from_id}[{ans.peer_id}] {add_req}')
+    await ans.answer(await exams.add_exam(conn, add_req, ans.from_id))
+
+
+@sad_bot.on.message(OnlyRegistered(conn), text=v_exam_delete)
+async def send_exam_delete(ans: Message, del_req):
+    """
+    Delete exam
+    """
+    logging.info(f'{ans.from_id}[{ans.peer_id}] {del_req}')
+    await ans.answer(await exams.delete_exam(conn, del_req, ans.from_id))
 
 
 @sad_bot.on.chat_message(OnlyRegistered(conn), text=v_important)
@@ -254,7 +295,7 @@ async def send_important_message(ans: Message, imp_message: str = None):
     await ans.answer(res[0], keyboard=res[1])
 
 
-@sad_bot.on.message(OnlyAdmin(conn), text='/stop')
+@sad_bot.on.message(OnlyAdmin(conn), text=v_kill)
 async def stop_bot(ans: Message):
     """
     Stop bot, record stats to database and finally close connection to database
@@ -262,9 +303,17 @@ async def stop_bot(ans: Message):
     global loop
     logging.info(f'{ans.from_id}[{ans.peer_id}]')
     await asyncio.gather(ans.answer('done'),
-                         record_stats(conn, (datetime.datetime.now() - start_time).seconds))
+                         record_stats(conn, datetime.datetime.now() - start_time))
     conn.close()
     loop.stop()
+
+
+@sad_bot.on.message(OnlyAdmin(conn), text=v_run_script)
+async def run_scripts(ans: Message, path):
+    """Run custom script"""
+    logging.info(f'SCRIPT WAS EXECUTED {path}')
+    res = subprocess.run([path], capture_output=True, shell=True).stdout
+    await ans.answer(f'Done {res}')
 
 
 async def decider(ans: GroupTypes.MessageEvent):
@@ -275,7 +324,12 @@ async def decider(ans: GroupTypes.MessageEvent):
     """
     payload = ans.object.payload
     event_data = None
-    group_uid = get_user(conn.cursor(), ans.object.peer_id).group_peer_id
+    user = await get_user(conn.cursor(), ans.object.peer_id)
+
+    if user.is_banned:
+        return
+
+    group_uid = user.group_peer_id
     peer_id = ans.object.peer_id
 
     logging.info(f'{ans.object.user_id}[{peer_id}] PAYLOAD {payload}')
@@ -301,12 +355,12 @@ async def decider(ans: GroupTypes.MessageEvent):
     elif payload == eb.bt_timetable.payload:
         event_data = await eb.sb_builder(classes.time_to_next(conn.cursor(), group_uid))
     elif payload == eb.bt_exam.payload:
-        event_data = await eb.sb_builder(exams.get_next_exam(group_uid, 1, conn.cursor()))
+        event_data = await eb.sb_builder(await exams.get_next_exam(group_uid, 1, conn.cursor()))
     elif peer_id in im.all:
         if payload['bt_id'] == im.all[peer_id].payload:
             event_data = await eb.sb_builder(
                 await im.imp(
-                    sad_bot,
+                    sad_bot.api,
                     ans.object.user_id,
                     peer_id,
                     ans.object.conversation_message_id
@@ -331,7 +385,4 @@ def start_listening():
     Start listening to events. Will work non-stop
     """
     # We need our own loop to have full control and be able to stop bot (check stop_bot function)
-    global loop
-    loop = asyncio.get_event_loop()
-    loop.create_task(sad_bot.run_polling())
-    loop.run_forever()
+    sad_bot.run_forever()

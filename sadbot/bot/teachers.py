@@ -18,11 +18,7 @@ Everything related to teachers
 import logging
 from sqlite3 import Cursor, Connection
 
-from .teachers_vocabulary import (
-    r_teacher_delete_help,
-    r_teacher_delete_success, r_teacher_delete_zero_fail, r_teacher_delete_permission_fail, r_teacher_delete_fail,
-    r_teacher_add_help, r_teacher_add_success,
-    r_teacher_find_fail, r_teacher_find_success, r_teacher_find_symbols)
+from bot.teachers_vocabulary import *
 
 
 def add_teacher(db: Connection, req: str, user_id: int):
@@ -31,7 +27,7 @@ def add_teacher(db: Connection, req: str, user_id: int):
     
     :param user_id: User id, who is adding
     :param db: Database
-    :param req: Request. For example, пример: '/добавь Имя Препода=Предмет'
+    :param req: Request
     :return: Result
     """
     if req.lower() == "имя=предмет":
@@ -48,7 +44,7 @@ def add_teacher(db: Connection, req: str, user_id: int):
     return r_teacher_add_success.format(req[0], req[1])
 
 
-def delete_teacher(db: Connection, req: str, user_id: int):
+def delete_teacher(db: Connection, req: int, user_id: int):
     """
     Delete teacher from database
 
@@ -57,36 +53,9 @@ def delete_teacher(db: Connection, req: str, user_id: int):
     :param user_id: User id
     :return: Result (success or fail)
     """
-    try:
-        teacher_name = req.split('=')[0]
-        teacher_class = req.split('=')[1]
-    except IndexError:
-        return r_teacher_delete_help
-
-    cur = db.cursor()
-    # First we check if this user has added this class
-    req_to_find = (teacher_class, teacher_name)
-    sql_to_find = "SELECT userId FROM teachers WHERE teacherClass == ? AND teacherName == ?"
-    find = cur.execute(sql_to_find, req_to_find).fetchall()
-    if len(find) > 0:
-        # Now we need to work only with records only by this user
-        users = []  # List of user who has added records with requested parameters
-        for i in find:
-            users.append(int(i['userId']))
-        if user_id in users:  # User is in list
-            req_to_delete = (teacher_class, teacher_name, user_id)
-            sql = "DELETE FROM teachers WHERE teacherClass == ? AND teacherName == ? AND userId == ?"
-            if cur.execute(sql, req_to_delete).rowcount > 0:
-                db.commit()
-                return r_teacher_delete_success
-            else:
-                logging.error('Deleted 0 records. Request: %s', req)
-                return r_teacher_delete_zero_fail
-        else:  # User wants to delete existing other users' record
-            return r_teacher_delete_permission_fail
-    else:
-        # No records of class with this name at all
-        return r_teacher_delete_fail
+    sql = db.cursor().execute("DELETE FROM teachers WHERE teacherId = ? AND userId = ?", (req, user_id)).rowcount
+    db.commit()
+    return r_teacher_delete_success if (sql != 0) else r_teacher_delete_fail  # Not 0 means deleted
 
 
 def find_teacher(cur: Cursor, req: str):
@@ -107,7 +76,7 @@ def find_teacher(cur: Cursor, req: str):
     out = ""
     for c, i in enumerate(res):
         print(i)
-        out += f"{c + 1}. {i['teacherName']}\n({i['teacherClass']})\n"
+        out += f"{i['teacherId']}. {i['teacherName']}\n({i['teacherClass']})\n"
     if not out:
         return r_teacher_find_fail.format(req)
     return r_teacher_find_success.format(out)

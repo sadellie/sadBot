@@ -19,7 +19,7 @@ import calendar
 from random import choice
 import datetime
 import sqlite3
-from .classes_vocabulary import *
+from bot.classes_vocabulary import *
 
 
 def get_classes_sql(cur: sqlite3.Cursor,
