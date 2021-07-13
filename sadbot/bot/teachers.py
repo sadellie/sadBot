@@ -12,21 +12,22 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-"""
-Everything related to teachers
-"""
-import logging
-from sqlite3 import Cursor, Connection
+"""Everything related to teachers"""
 
+from bot.base import db
 from bot.teachers_vocabulary import *
 
+cur = db.cursor()
 
-def add_teacher(db: Connection, req: str, user_id: int):
+
+# TODO Filter for groupId. Or not...
+
+
+def add_teacher(req: str, user_id: int):
     """
     Add teacher to database
     
     :param user_id: User id, who is adding
-    :param db: Database
     :param req: Request
     :return: Result
     """
@@ -44,11 +45,10 @@ def add_teacher(db: Connection, req: str, user_id: int):
     return r_teacher_add_success.format(req[0], req[1])
 
 
-def delete_teacher(db: Connection, req: int, user_id: int):
+def delete_teacher(req: int, user_id: int):
     """
     Delete teacher from database
 
-    :param db: Database
     :param req: Request, class name
     :param user_id: User id
     :return: Result (success or fail)
@@ -58,25 +58,20 @@ def delete_teacher(db: Connection, req: int, user_id: int):
     return r_teacher_delete_success if (sql != 0) else r_teacher_delete_fail  # Not 0 means deleted
 
 
-def find_teacher(cur: Cursor, req: str):
+def find_teacher(req: str):
     """
     Find teacher
 
     :param req: Request
-    :param cur: Cursor
     :return: Search result as string
     """
     if len(req) < 3:
         return r_teacher_find_symbols
     req_f = f"%{req.lower()}%"
-    qwe = (req_f,)
-    sql = "SELECT * FROM teachers WHERE teacherClassSearchable LIKE ? LIMIT 5"
-    cur.execute(sql, qwe)
-    res = cur.fetchall()
+    res = cur.execute("SELECT * FROM teachers WHERE teacherClassSearchable LIKE ? LIMIT 5", (req_f,)).fetchall()
     out = ""
-    for c, i in enumerate(res):
-        print(i)
-        out += f"{i['teacherId']}. {i['teacherName']}\n({i['teacherClass']})\n"
+    for i in res:
+        out += f"{i['teacherId']}. {i['teacherName']}\n[{i['teacherClass']}]\n"
     if not out:
         return r_teacher_find_fail.format(req)
     return r_teacher_find_success.format(out)

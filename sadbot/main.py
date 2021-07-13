@@ -16,12 +16,13 @@
 Main file. Run it and provide some arguments.
 -h for help
 """
+
 import argparse
-import configparser
-import sqlite3
-import sys
+import asyncio
+import warnings
 from pathlib import Path
 
+from bot.base import db, cp
 from bot.utils import utils
 
 
@@ -29,10 +30,9 @@ def main():
     """
     Main function expects to receive arguments. Otherwise will show help
     """
-    import os
-    cp = configparser.ConfigParser()
-    cp.read(os.path.join(sys.path[0], 'config.ini'), encoding='utf-8')
-    dp = os.path.join(sys.path[0] + cp['DEFAULT']['DatabaseName'])
+
+    if cp['DEFAULT']['Token'] == '':
+        warnings.warn("Don't forget to add your bot token in config.ini!")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--initiate",
@@ -44,8 +44,11 @@ def main():
     parser.add_argument("--register_new_group",
                         help="Register new group",
                         action="store_true")
-    parser.add_argument("--update_group",
-                        help="Update group schedule and/or name",
+    parser.add_argument("--update_group_schedule",
+                        help="Update group schedule",
+                        action="store_true")
+    parser.add_argument("--update_group_name",
+                        help="Update group name",
                         action="store_true")
     parser.add_argument("--start",
                         help="Start listening",
@@ -54,44 +57,31 @@ def main():
 
     if args.initiate:
         import os
-        import warnings
-        d_path = Path(dp)
+        d_path = Path(cp['DEFAULT']['DatabaseName'])
         try:
             os.mkdir(d_path.parent)
         except FileExistsError:
             warnings.warn('Folder already exists')
-
-        conn = sqlite3.connect(dp)
-        utils.create_database(conn)
+        utils.create_database(db)
         print('DATABASE FILE WAS CREATED. YOU CAN NOW OPEN IT IN EDITOR')
-        conn.close()
+        db.close()
 
     elif args.register_new_group:
         print("Use --generate_template_file to create template .xls file where you can enter your schedule")
-        print("Path to .xls file with schedule:")
-        path = input()
-        print("Name of the group")
-        group_name = input()
-        conn = sqlite3.connect(dp)
-        result = utils.register_new_group(conn=conn, path=path, group_name=group_name)
+        path = input("Path to .xls file with schedule:")
+        group_name = input("Name of the group")
+        result = utils.register_new_group(conn=db, path=path, group_name=group_name)
         print("Done" if result else "Something went wrong. See output above")
 
-    elif args.update_group:
-        print("Use --generate_template_file to create template .xls file where you can enter your schedule")
-        print("Path to .xls file with schedule. Leave empty if you don't want to change it:")
-        path = input()
-        print("Old name of the group.")
-        group_name = input()
-        print("New name of the group. Leave empty if you don't want to change it")
-        new_group_name = input()
-        conn = sqlite3.connect(dp)
-        result = utils.update_group(
-            conn=conn,
-            path=path,
-            group_name=group_name,
-            new_group_name=new_group_name
-        )
-        print("Done" if result else "Something went wrong")
+    elif args.update_group_schedule:
+        path = input('Path to .xls file')
+        g_id = input('Group id')
+        utils.update_schedule(db, path, int(g_id))
+
+    elif args.update_group_name:
+        g_id = input('Group id')
+        n = input('New name')
+        utils.update_name(db, g_id, n)
 
     elif args.generate_template:
         print(f"Done. Template file is here:\n{utils.generate_template_file()}")

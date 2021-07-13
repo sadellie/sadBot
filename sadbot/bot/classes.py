@@ -16,24 +16,23 @@
 Here is everything related to classes/schedule
 """
 import calendar
-from random import choice
 import datetime
-import sqlite3
+from random import choice
+from sqlite3 import Connection
+
+from bot.base import db
 from bot.classes_vocabulary import *
 
+cur = db.cursor()
 
-def get_classes_sql(cur: sqlite3.Cursor,
-                    wd: str,
-                    p: int):
-    """
-    SQL function to get classes for a specified day.
 
-    :param cur: Cursor
-    :param wd: Day of the week (for example: friday2)
-    :param p: Group uid
-    :return: All 6 classes
+def change_db(c: Connection):
+    """This function is used to replace or connection with the connection to test database
+
+    :param c:
     """
-    return cur.execute(f"SELECT {wd} FROM 'group{p}'").fetchall()
+    global cur
+    cur = c.cursor()
 
 
 def get_cur_week(day: datetime,
@@ -50,10 +49,10 @@ def get_cur_week(day: datetime,
         day = day + datetime.timedelta(days=1)
     week_number = day.isocalendar()[1]
     if week_number % 2 == 0:
-        # First week (bottom week in RU)
+        # First week (upper week in RU)
         return '2'
     else:
-        # Second week (upper week in RU)
+        # Second week (bottom week in RU)
         return '1'
 
 
@@ -66,16 +65,14 @@ def get_cur_week_text():
     return week_a if get_cur_week(datetime.datetime.today()) == '1' else week_b
 
 
-def get_classes(cur: sqlite3.Cursor,
-                p: int,
+def get_classes(p: int,
                 modifier: int = 0,
                 as_list: bool = True,
                 custom_day: list = None):
     """
     Get classes
 
-    :param cur: Database cursor
-    :param p:  Group unique identifier in database
+    :param p: Group unique identifier in database
     :param modifier: Days offset. For example, "Tomorrow classes" will require this value to be 1
     :param as_list: If False will return string
     :param custom_day: Used for tests. Will overwrite today's date
@@ -96,7 +93,7 @@ def get_classes(cur: sqlite3.Cursor,
 
     # Name of the weekday
     out = []  # List of classes
-    for i in get_classes_sql(cur, cur_weekday, p):
+    for i in cur.execute(f"SELECT {cur_weekday} FROM 'group{p}'").fetchall():
         class_name = str(i[cur_weekday])
         if class_name == 'None':
             class_name = r_classes_placeholder
@@ -110,66 +107,14 @@ def get_classes(cur: sqlite3.Cursor,
     return out
 
 
-def get_class(cur: sqlite3.Cursor,
-              p: int,
-              modifier=0,
-              custom_day: list = None,
-              custom_time: list = None):
+def get_timetable(g: int,
+                  now: datetime.datetime):
+    """Gets content from timetable for a specific group and time
+
+    :param g: Group uid
+    :param now: Time
+    :return: Timetable column, class number and time
     """
-    Get class
-
-    :param cur: Cursor
-    :param p: Group id in database
-    :param modifier: Offset, if 1, will return next class
-    :param custom_day: Used for tests. Will overwrite today's date. List of day, month, year
-    :param custom_time: Used for tests. Will overwrite current time
-    :return: Name of the class
-    """
-    # Decide whether ot not to use custom set time (for testing purposes)
-    now = datetime.datetime.now().replace(
-        hour=custom_time[0],
-        minute=custom_time[1]
-    ) if custom_time else datetime.datetime.now()  # Change current time to custom
-
-    # Loading timing
-    timing = cur.execute(f"SELECT groupTimeTable FROM group{p}").fetchall()
-    for class_number, i in enumerate(timing):
-        one_time = i['groupTimeTable'].split('-')  # [9:00, 10:20]
-        for index, x in enumerate(one_time):
-            x = x.split(':')
-            if now < now.replace(hour=int(x[0]), minute=int(x[1])):
-                # Check if current class is the last one, but user asks for the next one
-                if class_number + modifier >= len(timing):
-                    return r_class_last
-
-                # *book emoji* Пара 5:
-                # History (в 15:00)
-                return r_class_template.format(
-                    e=choice(['📒', '📕', '📗', '📘', '📙']),  # Every call will have random book emoji
-                    n=str(class_number + 1 + modifier),
-                    c=get_classes(cur, p, custom_day=custom_day)[class_number + modifier],
-                    t=timing[class_number + modifier]['groupTimeTable'].split('-')[0]  # Getting class start time
-                )
-    return r_class_no_more
-
-
-def time_to_next(cur: sqlite3.Cursor,
-                 g: int,
-                 custom_time: list = None):
-    """
-    When is the next class(timing)?
-
-    :param cur: Cursor
-    :param g: Group id in database
-    :param custom_time: Used for tests. Will overwrite current time, H:M
-    :return: Formatted string with minutes till next class
-    """
-    # Decide whether ot not to use custom set time (for testing purposes)
-    now = datetime.datetime.now().replace(
-        hour=custom_time[0],
-        minute=custom_time[1]
-    ) if custom_time else datetime.datetime.now()
-
     timing = cur.execute(f"SELECT groupTimeTable FROM group{g}").fetchall()
     for class_number, i in enumerate(timing):
         one_time = i['groupTimeTable'].split('-')  # [9:00, 10:20]
@@ -177,14 +122,70 @@ def time_to_next(cur: sqlite3.Cursor,
             x = x.split(':')
             check = now.replace(hour=int(x[0]), minute=int(x[1]))
             if now < check:
-                d = (check - now).seconds // 60  # Time to next class in seconds
-                h = d // 60  # Hours
-                m = d - h * 60  # Minutes
-                r = r_class_timetable_template
+                return timing, class_number, check
+    return None
 
-                if h > 0:
-                    r += f' {h} ч.'
-                if m > 0:
-                    r += f' {m} мин.'
-                return r
-    return r_class_no_more
+
+def get_class(p: int,
+              modifier=0,
+              custom_day: list = None,
+              custom_time: list = None):
+    """
+    Get class
+
+    :param p: Group id in database
+    :param modifier: Offset, if 1, will return next class
+    :param custom_day: Used for tests. Will overwrite today's date. List of day, month, year
+    :param custom_time: Used for tests. Will overwrite current time
+    :return: Name of the class
+    """
+    now = datetime.datetime.now().replace(
+        hour=custom_time[0],
+        minute=custom_time[1]
+    ) if custom_time else datetime.datetime.now()
+    res = get_timetable(p, now)
+    if res is not None:
+        timing, class_number, t = res
+        # Check if current class is the last one, but user asks for the next one
+        if class_number + modifier >= len(timing):
+            return r_class_last
+        # *book emoji* Пара 5:
+        # History (в 15:00)
+        return r_class_template.format(
+            e=choice(['📒', '📕', '📗', '📘', '📙']),  # Every call will have random book emoji
+            n=str(class_number + 1 + modifier),
+            c=get_classes(p, custom_day=custom_day)[class_number + modifier],
+            t=timing[class_number + modifier]['groupTimeTable'].split('-')[0]  # Getting class start time
+        )
+    else:
+        return r_class_no_more
+
+
+def time_to_next(g: int,
+                 custom_time: list = None):
+    """
+    When is the next class(timing)?
+
+    :param g: Group id in database
+    :param custom_time: Used for tests. Will overwrite current time, H:M
+    :return: Formatted string with minutes till next class
+    """
+    now = datetime.datetime.now().replace(
+        hour=custom_time[0],
+        minute=custom_time[1]
+    ) if custom_time else datetime.datetime.now()
+    res = get_timetable(g, now)
+    if res is not None:
+        timing, class_number, check = res
+        d = (check - now).seconds // 60  # Time to next class in seconds
+        h = d // 60  # Hours
+        m = d - h * 60  # Minutes
+        r = r_class_timetable_template
+        if h > 0:
+            r += f' {h} ч.'
+        if m > 0:
+            r += f' {m} мин.'
+        return r
+
+    else:
+        return r_class_no_more

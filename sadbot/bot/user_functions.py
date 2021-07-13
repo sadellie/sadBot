@@ -13,23 +13,20 @@
 #    limitations under the License.
 
 """Everything related to users and groups"""
-from sqlite3 import Connection, Cursor
-from typing import Union
 
-from vkbottle import Bot
 from vkbottle.bot import rules, Message
+from vkbottle_types.events import MessageEvent
 
-from bot.base_vocabulary import r_important_ok, r_important_not_ok, r_important_template
-from bot.utils.element_builders import kb_imp_builder
-from bot.utils.utils import get_random
+from bot.base import db, stats
+
+cur = db.cursor()
 
 
 class UserClass:
-    """
-    User class which represents one user in database
-    """
+    """User class which represents one user in database"""
 
-    def __init__(self, user_id: int,
+    def __init__(self,
+                 user_id: int,
                  group_peer_id: int,
                  is_admin: bool,
                  is_banned: bool):
@@ -40,23 +37,21 @@ class UserClass:
 
 
 class GroupClass:
-    """
-    Class which represents one group
-    """
+    """Class to represent a teaching group"""
 
     def __init__(self,
-                 group_id: str,
-                 group_name: str):
+                 group_id: int,
+                 name: str,
+                 admin_id: int):
         self.group_id = group_id
-        self.group_name = group_name
+        self.name = name
+        self.admin_id = admin_id
 
 
-async def get_user(cur: Cursor,
-                   user_id: int = 0):
+async def get_user(user_id: int):
     """
     Get user from database
 
-    :param cur: Cursor
     :param user_id: User id
     :return: Ready to use UserClass
     """
@@ -64,174 +59,56 @@ async def get_user(cur: Cursor,
     res = cur.fetchall()
     if len(res) > 0:
         res = res[0]
-        return UserClass(res['userId'],
-                         res['groupPeerId'],
+        return UserClass(int(res['userId']),
+                         int(res['userGroupId']),
                          True if res['isAdmin'] == 1 else False,
-                         True if res['isBanned'] == 1 else False,)
-    else:
-        return None
+                         True if res['isBanned'] == 1 else False)
 
 
-def register_user(db: Connection,
-                  user_id: int,
-                  group_name: str):
+def register_user(user_id: int,
+                  group_id: int):
     """
     Register user or chat. Add it to database
 
-    :param db: Database
     :param user_id: User id (peer_id if it's called in group')
-    :param group_name: Group name in database
+    :param group_id: Group name in database
     """
-    cur = db.cursor()
-    find_res = find_group_by_name(cur, group_name)
-
+    find_res = cur.execute("SELECT * FROM groups WHERE groupId=?", (group_id,)).fetchone()
     # First we check if requested group exists in database
     if find_res is not None:  # Requested group is in database
-        sql = "INSERT INTO users (userId, groupPeerId) VALUES (?, ?)"
-        values = (user_id, find_res.group_id)
+        sql = "INSERT INTO users (userId, userGroupId) VALUES (?, ?)"
+        values = (user_id, group_id)
         cur.execute(sql, values)
         db.commit()
-        return True
-    else:
-        return False
+        stats.uincr()
+        return find_res['groupName']
 
 
-def find_group_by_name(cur: Cursor,
-                       group_name: str):
+async def get_group_by_user(user_id: int):
+    """Gets name of the group of a specific user
+
+    :param user_id: UserID (peer id for group chats)
+    :return: Name of the group
     """
-    Find group in database by given name
-
-    :param cur: Database Cursor
-    :param group_name: Group name
-    :return: Returns first found group
-    """
-    cur.execute("SELECT * from groups WHERE groupName=?", (group_name,))
-    res = cur.fetchone()
-    if res is not None:  # Found group
-        return GroupClass(res['groupId'], res['groupName'])
+    u = await get_user(user_id)
+    if u:
+        g = db.cursor().execute("SELECT * FROM groups WHERE groupId=?", (u.group_peer_id,)).fetchone()
+        return GroupClass(group_id=g['groupId'],
+                          name=g['groupName'],
+                          admin_id=g['groupAdmin'])
 
 
-def get_all_groups(cursor: Cursor,
-                   names: bool = False):
-    """
-    Get all groups from database
-
-    :param cursor: Cursor
-    :param names: If true will return only list of group names
-    :return: List of groups
-    """
-    sql_result = cursor.execute("SELECT * FROM groups").fetchall()
-    result = []
-    if names:
-        for i in sql_result:
-            result.append(i['groupName'])
-    else:
-        for i in sql_result:
-            result.append(GroupClass(i['groupId'], i['groupName']))
-    return result
-
-
-def get_all_groups_formatted(cur: Cursor) -> str:
+def get_all_groups_formatted():
     """
     Get formatted string with all groups
 
-    :param cur: Cursor
     :return: Formatted string
     """
-    all_group_names = get_all_groups(cur)
-    result: str = "Список доступных групп:"
-    for index, group in enumerate(all_group_names):
-        result += f"\n{index + 1}. {group.group_name}"
-    return result
-
-
-class ImportantMessage:
-    """
-    Class for important message. Represents one message for each group chat
-    """
-
-    def __init__(self,
-                 message: str,
-                 payload: str,
-                 users: list):
-        self.message = message
-        self.payload = payload
-        self.users = users
-
-
-class ImportantMessagesCollection:
-    """
-    Class for a collection of ImportantMessages.
-    """
-
-    def __init__(self):
-        self.all: dict[int, ImportantMessage] = {}
-
-    def add_new_important_message(self,
-                                  peer_id: int,
-                                  text: str):
-        """
-        Adds important message to collection
-
-        :param peer_id: Peer_id of group chat
-        :param text: Text of important message
-        :return: Formatted reply and new inline keyboard
-        """
-        r = str(get_random())
-        message = r_important_template.format(m=text)
-        important_mes = ImportantMessage(message=message,
-                                         payload=r,
-                                         users=[])
-        self.all.update({peer_id: important_mes})
-        return message, kb_imp_builder(r)
-
-    async def imp(self,
-                  api,
-                  user_id: int,
-                  peer_id: int,
-                  message_id: int) -> str:
-        """
-        IMPORTANT function. Reacts to button clicks.
-
-        :param api: VK Api (from vkbottle)
-        :param user_id: User_id (who clicked)
-        :param peer_id: Chat peer_id (where it was clicked)
-        :param message_id: Message_id (which message was clicked and will be edited)
-        :return: Result
-        """
-
-        u_info = await api.users.get(user_ids=[str(user_id)])
-        f_name = u_info[0].first_name
-        l_name = u_info[0].last_name
-        m = self.all[peer_id]
-        if user_id in m.users:  # Check if user has already clicked the button
-            return r_important_not_ok.format(f_name)
-        else:  # User has never clicked this button
-            # Adding user name to the end of the message
-            m.users.append(user_id)
-            message_local = f"{m.message}\n{f_name} {l_name[0]}."
-            self.all.update(
-                {
-                    peer_id: ImportantMessage(
-                        message=message_local,
-                        payload=m.payload,
-                        users=m.users
-                    )
-                }
-            )
-            # Finally we can edit the message
-            await api.messages.edit(peer_id=peer_id,
-                                    message=message_local,
-                                    conversation_message_id=message_id,
-                                    keyboard=kb_imp_builder(m.payload))
-            return r_important_ok
+    return '\n'.join(f"{g['groupId']}. {g['groupName']}" for g in cur.execute('SELECT * FROM groups').fetchall())
 
 
 class BannedRule(rules.ABCMessageRule):
     """Exclude banned users"""
-
-    def __init__(self, conn: Connection):
-        self.conn = conn
 
     async def check(self, message: Message):
         """Check if user is banned
@@ -239,7 +116,7 @@ class BannedRule(rules.ABCMessageRule):
         :param message: Message object
         :return: False if banned
         """
-        u = await get_user(self.conn.cursor(), message.peer_id)
+        u = await get_user(message.peer_id)
         if u is None:
             return True
         else:
@@ -251,9 +128,6 @@ class OnlyRegistered(rules.ABCMessageRule):
     Rule which makes some features available only for registered in local database users
     """
 
-    def __init__(self, conn: Connection):
-        self.conn = conn
-
     async def check(self, message: Message):
         """
         Checks if user is in database
@@ -261,7 +135,13 @@ class OnlyRegistered(rules.ABCMessageRule):
         :param message: Incoming Message object
         :return: Returns True if check is passed. False if not.
         """
-        u = await get_user(self.conn.cursor(), message.peer_id)
+        if isinstance(message, Message):
+            p = message.peer_id
+        elif isinstance(message, MessageEvent):
+            p = message.object.peer_id
+        else:
+            return False
+        u = await get_user(p)
         if u is not None:
             return not u.is_banned
         return False
@@ -272,9 +152,6 @@ class OnlyAdmin(rules.ABCMessageRule):
     Rule which makes some features available only for admins
     """
 
-    def __init__(self, conn: Connection):
-        self.conn = conn
-
     async def check(self, message: Message):
         """
         Checks if user is an admin
@@ -282,7 +159,7 @@ class OnlyAdmin(rules.ABCMessageRule):
         :param message: Incoming Message object
         :return: Returns True if check is passed. False if not.
         """
-        u = await get_user(self.conn.cursor(), message.peer_id)
+        u = await get_user(message.peer_id)
         if u is not None:
             return u.is_admin
         return False

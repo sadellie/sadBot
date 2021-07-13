@@ -12,15 +12,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-"""
-Unittest here. Uses temporary database.
-"""
+"""Unittest here. Uses temporary database."""
+
 import shutil
 import sqlite3
 import tempfile
 import unittest
 
-from bot.classes import get_class, time_to_next
+from bot.classes import get_class, time_to_next, change_db
 from bot.utils.utils import create_database
 
 
@@ -95,12 +94,12 @@ def permission_error_fix(path):
     import _stat
     try:
         os.chmod(path, _stat.S_IWUSR)
-    except:
+    except Exception as e:
+        print(e)
         raise
 
 
 class TodayClass(unittest.TestCase):
-
     conn: sqlite3.Connection
     test_dir: str
 
@@ -115,6 +114,7 @@ class TodayClass(unittest.TestCase):
         cls.conn = create_empty_database(cls.test_dir)
         cls.cur = cls.conn.cursor()
         cls.custom_day = [15, 10, 2020]
+        change_db(cls.conn)
 
     @classmethod
     def tearDownClass(cls):
@@ -128,10 +128,9 @@ class TodayClass(unittest.TestCase):
 
     def test_get_time_to_next_before(self):
         """
-        Must return 5 minutes
+        Must return 1h 5m
         """
         result = time_to_next(
-            cur=self.cur,
             g=0,
             custom_time=[7, 55]
         )
@@ -139,10 +138,9 @@ class TodayClass(unittest.TestCase):
 
     def test_get_time_to_next_during(self):
         """
-        Must return 5 minutes
+        Must return 20m
         """
         result = time_to_next(
-            cur=self.cur,
             g=0,
             custom_time=[10, 00]
         )
@@ -150,10 +148,9 @@ class TodayClass(unittest.TestCase):
 
     def test_get_time_to_next_between(self):
         """
-        Must return 5 minutes
+        Must return 9m
         """
         result = time_to_next(
-            cur=self.cur,
             g=0,
             custom_time=[10, 21]
         )
@@ -161,10 +158,9 @@ class TodayClass(unittest.TestCase):
 
     def test_get_time_to_next_during_last(self):
         """
-        Must return 5 minutes
+        Must return 1m
         """
         result = time_to_next(
-            cur=self.cur,
             g=0,
             custom_time=[17, 49]
         )
@@ -172,10 +168,9 @@ class TodayClass(unittest.TestCase):
 
     def test_get_time_to_next_after_last(self):
         """
-        Must return 5 minutes
+        Must return no classes
         """
         result = time_to_next(
-            cur=self.cur,
             g=0,
             custom_time=[17, 55]
         )
@@ -186,7 +181,6 @@ class TodayClass(unittest.TestCase):
         Must return 1st class
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             custom_time=[8, 59],
             custom_day=self.custom_day
@@ -198,7 +192,6 @@ class TodayClass(unittest.TestCase):
         Must return 1st class
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             custom_time=[9, 15],
             custom_day=self.custom_day
@@ -210,7 +203,6 @@ class TodayClass(unittest.TestCase):
         Must return 3rd class
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             custom_time=[11, 51],
             custom_day=self.custom_day
@@ -222,7 +214,6 @@ class TodayClass(unittest.TestCase):
         Must return 3rd class
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             custom_time=[13, 00],
             custom_day=self.custom_day
@@ -234,7 +225,6 @@ class TodayClass(unittest.TestCase):
         Must return last class (6th)
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             custom_time=[17, 40],
             custom_day=self.custom_day
@@ -243,7 +233,6 @@ class TodayClass(unittest.TestCase):
 
 
 class NextClass(unittest.TestCase):
-
     conn: sqlite3.Connection
     test_dir: str
 
@@ -258,6 +247,7 @@ class NextClass(unittest.TestCase):
         print(cls.test_dir)
         cls.conn = create_empty_database(cls.test_dir)
         cls.cur = cls.conn.cursor()
+        change_db(cls.conn)
 
         cls.custom_day = [15, 10, 2020]
 
@@ -272,10 +262,9 @@ class NextClass(unittest.TestCase):
 
     def test_get_after_classes(self):
         """
-        Must return 'Пар больше нет'
+        Must return no classes
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             custom_time=[17, 51],
             custom_day=self.custom_day
@@ -287,7 +276,6 @@ class NextClass(unittest.TestCase):
         Must return 2nd class
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             modifier=1,
             custom_time=[8, 59],
@@ -299,10 +287,9 @@ class NextClass(unittest.TestCase):
 
     def test_get_next_class_after_first(self):
         """
-        Must return 3nd class
+        Must return 3rd class
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             modifier=1,
             custom_time=[10, 21],  # Time is 10:21, 1st class has just ended
@@ -312,10 +299,9 @@ class NextClass(unittest.TestCase):
 
     def test_get_next_class_last(self):
         """
-        Must return '❌ Сейчас последняя пара, дальше ничего нет'
+        Must return last class message
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             modifier=1,
             custom_time=[17, 49],  # It's last class for today, so nothing comes after it
@@ -325,10 +311,9 @@ class NextClass(unittest.TestCase):
 
     def test_get_next_class_after_last(self):
         """
-        Must return 'Больше пар нет'
+        Must return no classes
         """
         result = get_class(
-            cur=self.cur,
             p=0,
             modifier=1,
             custom_time=[17, 51],  # Last class has just ended

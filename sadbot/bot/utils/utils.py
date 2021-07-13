@@ -12,23 +12,88 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-"""
-Utilities. Different unsorted functions
-"""
+"""Utilities. Different unsorted functions"""
+
 # Some imports are within functions as they are called only once before shutdown
 import datetime
 import time
-from sqlite3 import Connection, connect
+from typing import Union
+
+import xlrd
+from xlrd.sheet import Sheet
+import xlwt
+import os.path
+from sqlite3 import Connection, connect, OperationalError
 
 
-def get_random():
-    """
-    Generate random message_id. Necessary to send message
+g_h = ["groupTimeTable",
+       "monday1", "tuesday1", "wednesday1", "thursday1", "friday1", "saturday1", "sunday1",
+       "monday2", "tuesday2", "wednesday2", "thursday2", "friday2", "saturday2", "sunday2"]
 
-    :return: random number
-    """
 
-    return time.time() * 1000000
+class Stats(object):
+    """This class is used to have only one instance of some things"""
+    _instance = None
+    db: Connection = None
+    m: int = 0  # Messages
+    j: int = 0  # Group chat joins
+    c: int = 0  # Callback
+    u: int = 0  # Number of users in db
+    start_time = datetime.datetime.now()  # Time when the bot was launched
+    offset_time = 0  # Difference between local time and VK time
+
+    def __new__(cls,
+                db: Connection = None,
+                offset_time: int = None):
+        """Create new object
+
+        :param c: Connection to database, must be given at least once
+        """
+        if cls._instance is None:
+            cls._instance = super(Stats, cls).__new__(cls)
+            # Loading previous stats from db
+            try:
+                cls.db = db
+                cur = cls.db.cursor()
+                s = cur.execute("SELECT * FROM stats ORDER BY statDate DESC LIMIT 1").fetchone()
+                cls.usr_count()  # Getting current users count
+                cls.m = s['statM']
+                cls.c = s['statC']
+                cls.j = s['statJ']
+                cls.offset_time = offset_time
+            except TypeError:
+                print('stats table is empty')
+        return cls._instance
+
+    @classmethod
+    def mincr(cls):
+        """Increments messages count"""
+        cls.m += 1
+
+    @classmethod
+    def jincr(cls):
+        """Increments group chat joins count"""
+        cls.j += 1
+
+    @classmethod
+    def cincr(cls):
+        """Increments callbacks count"""
+        cls.c += 1
+
+    @classmethod
+    def uincr(cls):
+        """Increments callbacks count"""
+        cls.u = len(cls.db.cursor().execute("SELECT * FROM users").fetchall())
+
+    @classmethod
+    def usr_count(cls):
+        cls.u = len(cls.db.cursor().execute("SELECT * FROM users").fetchall())
+
+    @classmethod
+    def offset(cls, o: int):
+        t = time.time()
+        cls.offset_time = o - t
+
 
 
 def get_uptime(start_time):
@@ -84,17 +149,19 @@ def load_sad_replies(conn: Connection):
 
 
 async def record_stats(db: Connection,
-                       uptime: datetime.timedelta):
+                       s: Stats):
     """
     Record statistics into database
 
     :param db: Database connection
-    :param uptime: Uptime
+    :param u: Uptime
+    :param m: Messages count
+    :param j: Number of joined group chats
     """
-    sql = "INSERT INTO stats (statDate, statUptime) VALUES (?, ?)"
-    req = (datetime.datetime.now(), uptime.seconds)
+    sql = "INSERT INTO stats (statDate, statUptime, statM, statC, statJ) VALUES (?, ?, ?, ?, ?)"
+    ut = datetime.datetime.now() - s.start_time
+    req = (datetime.datetime.now(), ut.total_seconds(), s.m, s.c, s.j)
     db.cursor().execute(sql, req)
-    print(datetime.datetime.timetuple(datetime.datetime.now()))
     db.commit()
 
 
@@ -118,7 +185,7 @@ def create_database(db: Connection):
 
     # Stats table
     cur.execute(
-        'CREATE TABLE stats (statDate DATE, statUptime TIME);'
+        'CREATE TABLE stats (statDate DATE, statUptime TIME, statM INTEGER, statC INTEGER, statJ INTEGER);'
     )
 
     # Teachers table
@@ -130,7 +197,7 @@ def create_database(db: Connection):
     # Users table
     cur.execute(
         'CREATE TABLE users (userId TEXT PRIMARY KEY NOT NULL UNIQUE ON CONFLICT REPLACE, '
-        'groupPeerId INTEGER REFERENCES groups (groupId) ON DELETE CASCADE ON UPDATE CASCADE, '
+        'userGroupId INTEGER REFERENCES groups (groupId) ON DELETE CASCADE ON UPDATE CASCADE, '
         'isAdmin BOOLEAN, isBanned BOOLEAN);'
     )
 
@@ -143,23 +210,84 @@ def create_database(db: Connection):
     db.commit()
 
 
-def check_sheet(file_path: str) -> bool:
+def xl_to_sql(file_path: str,
+              db: Connection,
+              gid: int):
+    """Converts xls file to sqlite table. Same as pandas function but has to be reinvented coz hardware limitations
+    Since it is custom it made specifically to convert schedules and nothing else
+    (will not work properly with other xls files)
+
+    :param file_path: Path to xls file
+    :param db: Database connection
+    :param gid: Group id
     """
-    Checks sheet for typos in column headers
+    t_name = f"'group{gid}'"  # Group table name
+    cur = db.cursor()  # Cursor
+    sheet: Sheet = xlrd.open_workbook(file_path).sheet_by_index(0)  # Sheet with schedule
+    columns = sheet.row_slice(0)  # Headers
+    n_cl = len(sheet.col_slice(0)) - 1  # Number of classes
+    to_ins = []  # Data to insert
+    for i in range(1, n_cl + 1):
+        sl = sheet.row_slice(i)
+        vls = []
+        for v in sl:
+            vls.append(v.value if v.value != '' else None)
+        to_ins.append(vls)
+
+    # Very dumb way to construct sql request and avoid bugs. (had no time to thing of anything else)
+    ex = f"CREATE TABLE {t_name} (classId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL"
+    head = []  # Collection of table headers
+    for item in columns:  # Yep, second loop. Ugly, but works. Probably will improve
+        ex += f", {item.value} TEXT"
+        head.append(item.value)
+    ex += ")"
+
+    # Since we mostly use this function to update existing schedule we try drop the table. On error will just skip it
+    try:
+        cur.execute(f"DROP TABLE {t_name}")
+        print('db is not new')
+    except OperationalError as e:
+        print('DB is new')
+
+    cur.execute(ex)  # Now we can create a new table
+
+    # Another ugly way to construct request
+    head_sq = ', '.join(head)  # Collection of column but separated with comma
+    val_sq = ', '.join((len(head) * '?'))  # Some amount of ?
+
+    # Inserting new data
+    for d in to_ins:
+        com = f"INSERT INTO {t_name} ({head_sq}) VALUES ({val_sq})"
+        cur.execute(com, d)
+    # All good, can commit now
+    db.commit()
+
+
+def xls_has_errors(file_path: str) -> str:
+    """
+    Checks sheet for typos in column headers and in groupTimeColumn
 
     :param file_path: Path to Excel file
-    :return: Return True if everything is ok
+    :return: Returns error description or nothing if everything is ok
     """
-    import xlrd
-    check = ["groupTimeTable", "monday1", "tuesday1", "wednesday1", "thursday1", "friday1", "saturday1", "sunday1",
-             "monday2", "tuesday2", "wednesday2", "thursday2", "friday2", "saturday2", "sunday2"]
     sheet = xlrd.open_workbook(file_path).sheet_by_index(0)
-    for indx, val in enumerate(check):
+    n = datetime.datetime.now()
+
+    for indx, val in enumerate(g_h):
         cell = sheet.cell(0, indx).value
         if cell != val:
-            print(f"{cell} != {val}")  # Prints what header didn't pass the check
-            return False
-    return True
+            return f"{cell} != {val}"
+
+    for indx, i in enumerate(sheet.col_slice(0, start_rowx=1)):
+        v: str = str(i.value)
+        try:
+            c = v.split('-')
+            for x in c:
+                x = x.split(':')
+                dt = n.replace(hour=int(x[0]), minute=int(x[1]))
+        except Exception as e:
+            print(e)
+            return f'Ошибка в строке {indx+2} в столбце {g_h[0]}, неправильное значение: {i.value}'
 
 
 def xl_to_database(path: str,
@@ -193,7 +321,7 @@ def register_new_group(conn: Connection,
     :param group_name: Name of the group
     :return: True if Excel file was OK, False if there was something wrong with it
     """
-    if check_sheet(path):
+    if not xls_has_errors(path):
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO groups (groupName) VALUES (?)",
@@ -202,7 +330,8 @@ def register_new_group(conn: Connection,
         conn.commit()
         cur.execute("SELECT * FROM groups ORDER BY groupId DESC LIMIT 1;")
         fetch = cur.fetchone()
-        group_id = fetch[0]
+        print(fetch)
+        group_id = fetch['groupId']
         xl_to_database(
             path=path,
             group_id=group_id,
@@ -214,56 +343,30 @@ def register_new_group(conn: Connection,
 
 
 # Not tested properly
-def update_group(conn: Connection,
-                 group_name: str,
-                 path: str,
-                 new_group_name: str):
-    """
-    Update group schedule/name
+def update_schedule(db: Connection,
+                    path: str,
+                    g_id: int) -> Union[None, str]:
+    """Method to update schdule in database for a group. Basically just convert xls file to sqlite table.
 
-    :param conn: Database
-    :param group_name: Name of the group
-    :param path: Path to .xls file with schedule
-    :param new_group_name: New name of the group
-    :return: True if everything is ok. False is something went wrong
+    :param db:
+    :param path:
+    :param g_id:
     """
-    r = False
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT groupId FROM groups WHERE groupName = ?",
-        (group_name,)
-    )
-    fetch = cur.fetchone()
-    if fetch is None:
-        print(f'No such group {group_name}')
-        r = False
-    if len(path) > 0:  # User wants to update schedule
-        if check_sheet(path):
-            group_id = fetch[0]
-            xl_to_database(
-                path=path,
-                group_id=group_id,
-                conn=conn
-            )
-            r = True
-        else:
-            r = False
-    if len(new_group_name) > 0:  # User wants to update group name
-        cur.execute(
-            "UPDATE groups SET groupName = ? WHERE groupName = ?",
-            (new_group_name, group_name)
-        )
-        conn.commit()
-        cur.execute(
-            "SELECT groupName FROM groups WHERE groupName = ?",
-            (new_group_name,)
-        )
-        if len(cur.fetchall()) > 0:
-            r = True
-        else:
-            r = False
+    r = db.cursor().execute("SELECT groupId FROM groups WHERE groupId = ?", (g_id,)).fetchone()
+    if not r:
+        raise RuntimeError('Incorrect group id')
+    c = xls_has_errors(path)  # We check if xls file has any sort of errors
+    if not c:  # There are bo errors, we can convert it
+        xl_to_sql(file_path=path, db=db, gid=g_id)
+    else:  # There are some errors
+        return c
 
-    return r
+
+def update_name(db: Connection,
+                g_id: int,
+                new: str):
+    db.cursor().execute("UPDATE groups SET groupName = ? WHERE groupId = ?", (new, g_id))
+    db.commit()
 
 
 def generate_template_file():
@@ -272,16 +375,11 @@ def generate_template_file():
 
     :return: Path, where template was saved
     """
-    import xlwt
-    import os.path
     workbook = xlwt.Workbook()
     sheet = workbook.add_sheet('schedule')
     path = os.path.dirname(__file__) + '/template.xls'
 
-    headers = ["groupTimeTable", "monday1", "tuesday1", "wednesday1", "thursday1", "friday1", "saturday1", "sunday1",
-               "monday2", "tuesday2", "wednesday2", "thursday2", "friday2", "saturday2", "sunday2"]
-
-    for index, value in enumerate(headers):
+    for index, value in enumerate(g_h):
         sheet.write(
             0,
             index,
